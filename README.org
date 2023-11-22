@@ -1,0 +1,6 @@
+* CSE4066 Final Project
+
+  This is my final project for CSE4066 at NMT, "Machine Learning." The
+  project will generate pictures of polygons with various distortions
+  added, then use a convolutional neural network written from scratch
+  to classify the resulting images.
