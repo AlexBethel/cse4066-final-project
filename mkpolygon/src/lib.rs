@@ -1,14 +1,9 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! Library to generate images of polygons.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod image;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub use image::Image;
+
+pub fn ngon_flat_center(xsize: usize, ysize: usize, n_sides: u32) -> Image {
+    todo!()
 }
