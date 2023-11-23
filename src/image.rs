@@ -7,15 +7,15 @@ use std::{
 
 /// A grayscale, 8-bit depth image.
 pub struct Image {
-    xsize: usize,
-    ysize: usize,
+    pub xsize: usize,
+    pub ysize: usize,
 
     /// Must be of length `xsize * ysize`.
-    data: Vec<u8>,
+    pub data: Vec<f64>,
 }
 
 impl Index<(usize, usize)> for Image {
-    type Output = u8;
+    type Output = f64;
 
     fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
         if x > self.xsize || y > self.ysize {
@@ -42,7 +42,7 @@ impl Image {
         Self {
             xsize,
             ysize,
-            data: std::iter::repeat(0).take(xsize * ysize).collect(),
+            data: std::iter::repeat(0.0).take(xsize * ysize).collect(),
         }
     }
 
@@ -51,12 +51,18 @@ impl Image {
         let mut encoder = png::Encoder::new(output, self.xsize as u32, self.ysize as u32);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_color(png::ColorType::Grayscale);
-        encoder.write_header()?.write_image_data(&self.data)?;
+        encoder.write_header()?.write_image_data(
+            &self
+                .data
+                .iter()
+                .map(|&x| (x.clamp(0., 1.) * 255.0) as _)
+                .collect::<Vec<_>>(),
+        )?;
         Ok(())
     }
 
     /// Create an image from a function that samples pixels.
-    pub fn from_sampler(xsize: usize, ysize: usize, sampler: impl Fn(usize, usize) -> u8) -> Self {
+    pub fn from_sampler(xsize: usize, ysize: usize, sampler: impl Fn(usize, usize) -> f64) -> Self {
         Self {
             xsize,
             ysize,
@@ -80,22 +86,20 @@ impl Image {
             let y_from_top = py as f64 / ysize as f64;
             let x = (x_from_left - 0.5) * 2.0;
             let y = -(y_from_top - 0.5) * 2.0;
-            (sampler(x, y).clamp(0.0, 1.0) * 255.0) as u8
+            sampler(x, y)
         })
     }
 
     /// Downscale an image by grouping the pixels and averaging.
     pub fn divide(self, x_scaler: usize, y_scaler: usize) -> Self {
         Image::from_sampler(self.xsize / x_scaler, self.ysize / y_scaler, |px, py| {
-            let mut sum = 0;
+            let mut sum = 0.;
             for x in px * x_scaler..(px + 1) * x_scaler {
                 for y in py * y_scaler..(py + 1) * y_scaler {
-                    sum += self[(x, y)] as usize;
+                    sum += self[(x, y)];
                 }
             }
-            (sum / (x_scaler * y_scaler))
-                .try_into()
-                .expect("average overflowed")
+            sum / (x_scaler * y_scaler) as f64
         })
     }
 }

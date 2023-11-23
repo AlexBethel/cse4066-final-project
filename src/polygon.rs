@@ -1,10 +1,8 @@
 //! Library to generate images of polygons.
 
-mod image;
-
 use std::f64::consts::TAU;
 
-pub use image::Image;
+pub use crate::image::Image;
 
 /// Draw an N-polygon, in white with a black background with no
 /// antialiasing, centered within the image.

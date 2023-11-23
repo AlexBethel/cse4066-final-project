@@ -1,6 +1,10 @@
 use std::fs::File;
 
-use mkpolygon::ngon_regular;
+use polygon::ngon_regular;
+
+mod cnn;
+mod image;
+mod polygon;
 
 fn main() {
     // let img = mkpolygon::Image::from_graph_sampler(100, 100, |x, y| f64::hypot(x, y));
