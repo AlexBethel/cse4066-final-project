@@ -1,6 +1,9 @@
 //! Image type and related functions.
 
-use std::io::Write;
+use std::{
+    io::Write,
+    ops::{Index, IndexMut},
+};
 
 /// A grayscale, 8-bit depth image.
 pub struct Image {
@@ -9,6 +12,28 @@ pub struct Image {
 
     /// Must be of length `xsize * ysize`.
     data: Vec<u8>,
+}
+
+impl Index<(usize, usize)> for Image {
+    type Output = u8;
+
+    fn index(&self, (x, y): (usize, usize)) -> &Self::Output {
+        if x > self.xsize || y > self.ysize {
+            panic!("Pixel out of range");
+        }
+
+        &self.data[y * self.xsize + x]
+    }
+}
+
+impl IndexMut<(usize, usize)> for Image {
+    fn index_mut(&mut self, (x, y): (usize, usize)) -> &mut Self::Output {
+        if x > self.xsize || y > self.ysize {
+            panic!("Pixel out of range");
+        }
+
+        &mut self.data[y * self.xsize + x]
+    }
 }
 
 impl Image {
@@ -56,6 +81,21 @@ impl Image {
             let x = (x_from_left - 0.5) * 2.0;
             let y = -(y_from_top - 0.5) * 2.0;
             (sampler(x, y).clamp(0.0, 1.0) * 255.0) as u8
+        })
+    }
+
+    /// Downscale an image by grouping the pixels and averaging.
+    pub fn divide(self, x_scaler: usize, y_scaler: usize) -> Self {
+        Image::from_sampler(self.xsize / x_scaler, self.ysize / y_scaler, |px, py| {
+            let mut sum = 0;
+            for x in px * x_scaler..(px + 1) * x_scaler {
+                for y in py * y_scaler..(py + 1) * y_scaler {
+                    sum += self[(x, y)] as usize;
+                }
+            }
+            (sum / (x_scaler * y_scaler))
+                .try_into()
+                .expect("average overflowed")
         })
     }
 }

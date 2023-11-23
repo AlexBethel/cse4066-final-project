@@ -12,11 +12,7 @@ pub fn ngon_flat(xsize: usize, ysize: usize, vertices: &[(f64, f64)]) -> Image {
     Image::from_graph_sampler(xsize, ysize, |x, y| {
         let mut multiplicity = 0;
         for (a, b) in Edges::new(vertices) {
-            let (a, b) = if a.0 > b.0 {
-                (b, a)
-            } else {
-                (a, b)
-            };
+            let (a, b) = if a.0 > b.0 { (b, a) } else { (a, b) };
 
             if a.0 <= x && b.0 > x {
                 let ab = (b.0 - a.0, b.1 - a.1);
@@ -33,10 +29,10 @@ pub fn ngon_flat(xsize: usize, ysize: usize, vertices: &[(f64, f64)]) -> Image {
 }
 
 /// Draw a regular n-gon in the center of an image.
-pub fn ngon_regular(xsize: usize, ysize: usize, n_vertices: u32) -> Image {
+pub fn ngon_regular(xsize: usize, ysize: usize, n_vertices: u32, angle_offset: f64) -> Image {
     let vertices: Vec<_> = (0..n_vertices)
         .map(|i| {
-            let angle = i as f64 * TAU / n_vertices as f64;
+            let angle = angle_offset + i as f64 * TAU / n_vertices as f64;
             let sc = angle.sin_cos();
             (sc.1, sc.0)
         })
