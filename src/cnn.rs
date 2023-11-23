@@ -13,23 +13,6 @@ pub trait NetworkLayer {
     fn backprop(&mut self, output_derivatives: &[Self::OutputElem]) -> Vec<Self::InputElem>;
 }
 
-/// Floating-point, signed version of an image.
-pub struct ImageDifferential {
-    xsize: usize,
-    ysize: usize,
-    data: Vec<f64>,
-}
-
-impl From<&Image> for ImageDifferential {
-    fn from(value: &Image) -> Self {
-        Self {
-            xsize: value.xsize,
-            ysize: value.ysize,
-            data: value.data.iter().map(|&x| (x as f64) / 255.0).collect(),
-        }
-    }
-}
-
 /// A convolutional layer in a neural network. It takes as input a set
 /// of images, and produces a bigger set of images (specifically, one
 /// whose size is multiplied by `kernels`.length()).
@@ -45,14 +28,18 @@ pub struct CnnLayer {
 }
 
 impl NetworkLayer for CnnLayer {
-    type InputElem = ImageDifferential;
+    type InputElem = Image;
 
-    type OutputElem = ImageDifferential;
+    type OutputElem = Image;
 
     fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
         input
             .iter()
-            .flat_map(|input| self.kernels.iter().map(|kernel| todo!()))
+            .flat_map(|input| {
+                self.kernels.iter().map(|kernel| {
+                    apply_kernel(kernel, self.kernel_diameter, self.kernel_stride, input)
+                })
+            })
             .collect()
     }
 
@@ -61,11 +48,19 @@ impl NetworkLayer for CnnLayer {
     }
 }
 
-fn apply_kernel(
-    kernel: &[f64],
-    diameter: usize,
-    stride: usize,
-    input: &ImageDifferential,
-) -> ImageDifferential {
-    
+pub fn apply_kernel(kernel: &[f64], diameter: usize, stride: usize, input: &Image) -> Image {
+    Image::from_sampler(
+        (input.xsize - diameter) / stride,
+        (input.ysize - diameter) / stride,
+        |x, y| {
+            let ul_pixel = (x * stride, y * stride);
+            let mut sum = 0.;
+            for ky in 0..diameter {
+                for kx in 0..diameter {
+                    sum += kernel[ky * diameter + kx] * input[(ul_pixel.0 + kx, ul_pixel.1 + ky)];
+                }
+            }
+            sum
+        },
+    )
 }
