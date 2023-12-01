@@ -28,6 +28,56 @@ pub trait NeuralNetwork {
         output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem>;
+
+    fn stack<O: NeuralNetwork<InputElem = Self::OutputElem>>(
+        self,
+        other: O,
+    ) -> StackedNetwork<Self, O>
+    where
+        Self: Sized,
+    {
+        StackedNetwork(self, other)
+    }
+}
+
+/// A stack of network layers.
+#[derive(Debug)]
+pub struct StackedNetwork<A: NeuralNetwork, B: NeuralNetwork>(A, B);
+
+impl<A: NeuralNetwork, B: NeuralNetwork<InputElem = A::OutputElem>> NeuralNetwork
+    for StackedNetwork<A, B>
+{
+    type InputElem = A::InputElem;
+    type OutputElem = B::OutputElem;
+
+    fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
+        let StackedNetwork(a, b) = self;
+        b.propagate(&a.propagate(input))
+    }
+
+    fn backprop_self(
+        &mut self,
+        output_derivatives: &[Self::OutputElem],
+        inputs: &[Self::InputElem],
+        eta: f64,
+    ) {
+        let StackedNetwork(a, b) = self;
+        let intermediates = a.propagate(inputs);
+        b.backprop_self(output_derivatives, &intermediates, eta);
+        let intermediate_derivatives = b.backprop_input(output_derivatives, &intermediates);
+        a.backprop_self(&intermediate_derivatives, inputs, eta);
+    }
+
+    fn backprop_input(
+        &self,
+        output_derivatives: &[Self::OutputElem],
+        inputs: &[Self::InputElem],
+    ) -> Vec<Self::InputElem> {
+        let StackedNetwork(a, b) = self;
+        let intermediates = a.propagate(inputs);
+        let intermediate_derivatives = b.backprop_input(output_derivatives, &intermediates);
+        a.backprop_input(&intermediate_derivatives, inputs)
+    }
 }
 
 /// A convolutional layer in a neural network. It takes as input a set
@@ -111,6 +161,26 @@ impl Activation for Relu {
 
     fn derivative(&self, input: f64) -> f64 {
         input.signum().max(0.0)
+    }
+}
+
+#[derive(Debug)]
+pub struct LeakyRelu(pub f64);
+impl Activation for LeakyRelu {
+    fn apply(&self, input: f64) -> f64 {
+        if input > 0. {
+            input
+        } else {
+            input * self.0
+        }
+    }
+
+    fn derivative(&self, input: f64) -> f64 {
+        if input > 0. {
+            1.
+        } else {
+            self.0
+        }
     }
 }
 
