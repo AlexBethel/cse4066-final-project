@@ -146,6 +146,53 @@ pub fn apply_kernel(kernel: &[f64], diameter: usize, stride: usize, input: &Imag
     )
 }
 
+pub struct SoftmaxLayer;
+
+impl NeuralNetwork for SoftmaxLayer {
+    type InputElem = f64;
+    type OutputElem = f64;
+
+    fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
+        let sum: f64 = input.iter().map(|&x| x.exp()).sum();
+        input.iter().map(|&x| x.exp() / sum).collect()
+    }
+
+    fn backprop_self(
+        &mut self,
+        _output_derivatives: &[Self::OutputElem],
+        _inputs: &[Self::InputElem],
+        _eta: f64,
+    ) {
+        // do nothing.
+    }
+
+    fn backprop_input(
+        &self,
+        output_derivatives: &[Self::OutputElem],
+        inputs: &[Self::InputElem],
+    ) -> Vec<Self::InputElem> {
+        // Index of the single correct output choice.
+        let (c, derr_dout_c) = output_derivatives
+            .iter()
+            .enumerate()
+            .find(|(_, &v)| v != 0.)
+            .expect("network was already perfect!");
+        let t_c = inputs[c];
+
+        let s: f64 = inputs.iter().map(|&t| t.exp()).sum();
+        let dout_c_din_i = inputs.iter().enumerate().map(|(i, &t)| {
+            if i != c {
+                -(t_c.exp() * t.exp()) / s.powi(2)
+            } else {
+                t_c.exp() * (s - t_c.exp()) / s.powi(2)
+            }
+        });
+
+        let derr_din_i = dout_c_din_i.map(|x| x * derr_dout_c);
+        derr_din_i.collect()
+    }
+}
+
 /// An activation function.
 pub trait Activation {
     fn apply(&self, input: f64) -> f64;
@@ -184,6 +231,18 @@ impl Activation for LeakyRelu {
     }
 }
 
+#[derive(Debug)]
+pub struct Logistic;
+impl Activation for Logistic {
+    fn apply(&self, input: f64) -> f64 {
+        1. / (1. + input.exp())
+    }
+
+    fn derivative(&self, input: f64) -> f64 {
+        -input.exp() / (1. + input.exp()).powi(2)
+    }
+}
+
 /// A standard neural network layer.
 #[derive(Debug)]
 pub struct FullyConnectedLayer<F: Activation> {
@@ -217,7 +276,7 @@ impl<F: Activation> FullyConnectedLayer<F> {
         Self {
             n_inputs,
             n_outputs,
-            weights: repeat_with(random)
+            weights: repeat_with(|| random::<f64>() - 0.5)
                 .take((n_inputs + 1) * n_outputs)
                 .collect(),
             activation,

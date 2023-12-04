@@ -1,0 +1,3 @@
+https://victorzhou.com/blog/intro-to-cnns-part-2/
+
+http://cs231n.stanford.edu/slides/2019/cs231n_2019_lecture04.pdf "numerical gradient"
