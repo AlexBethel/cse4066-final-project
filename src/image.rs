@@ -1,7 +1,7 @@
 //! Image type and related functions.
 
 use std::{
-    io::Write,
+    io::{Read, Write},
     ops::{Index, IndexMut},
 };
 
@@ -59,6 +59,19 @@ impl Image {
                 .collect::<Vec<_>>(),
         )?;
         Ok(())
+    }
+
+    /// Read an image from a PNG.
+    pub fn read_png(input: &mut impl Read) -> std::io::Result<Self> {
+        let decoder = png::Decoder::new(input);
+        let mut reader = decoder.read_info()?;
+        let mut buf = vec![0; reader.output_buffer_size()];
+        reader.next_frame(&mut buf)?;
+        Ok(Self {
+            xsize: reader.info().width.try_into().unwrap(),
+            ysize: reader.info().height.try_into().unwrap(),
+            data: buf.into_iter().map(|x| x as f64 / 255.0).collect(),
+        })
     }
 
     /// Create an image from a function that samples pixels.

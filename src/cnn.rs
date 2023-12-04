@@ -5,7 +5,10 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use rand::random;
+use serde::{Deserialize, Serialize};
+
+// use rand::random;
+use crate::random::random;
 
 use crate::image::Image;
 
@@ -19,10 +22,12 @@ pub trait NeuralNetwork {
     fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem>;
     fn backprop_self(
         &mut self,
-        output_derivatives: &[Self::OutputElem],
-        inputs: &[Self::InputElem],
-        eta: f64,
-    );
+        _output_derivatives: &[Self::OutputElem],
+        _inputs: &[Self::InputElem],
+        _eta: f64,
+    ) {
+        // do nothing by default.
+    }
     fn backprop_input(
         &self,
         output_derivatives: &[Self::OutputElem],
@@ -41,7 +46,7 @@ pub trait NeuralNetwork {
 }
 
 /// A stack of network layers.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StackedNetwork<A: NeuralNetwork, B: NeuralNetwork>(A, B);
 
 impl<A: NeuralNetwork, B: NeuralNetwork<InputElem = A::OutputElem>> NeuralNetwork
@@ -83,7 +88,7 @@ impl<A: NeuralNetwork, B: NeuralNetwork<InputElem = A::OutputElem>> NeuralNetwor
 /// A convolutional layer in a neural network. It takes as input a set
 /// of images, and produces a bigger set of images (specifically, one
 /// whose size is multiplied by `kernels`.length()).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CnnLayer {
     kernel_diameter: usize,
     kernel_stride: usize,
@@ -91,6 +96,22 @@ pub struct CnnLayer {
     // The kernels; each one is a `kernel_diameter` x
     // `kernel_diameter` square.
     kernels: Vec<Vec<f64>>,
+}
+
+impl CnnLayer {
+    pub fn new(kernel_diameter: usize, kernel_stride: usize, n_kernels: usize) -> Self {
+        Self {
+            kernel_diameter,
+            kernel_stride,
+            kernels: repeat_with(|| {
+                repeat_with(|| random::<f64>() - 0.5)
+                    .take(kernel_diameter * kernel_diameter)
+                    .collect()
+            })
+            .take(n_kernels)
+            .collect(),
+        }
+    }
 }
 
 impl NeuralNetwork for CnnLayer {
@@ -109,13 +130,19 @@ impl NeuralNetwork for CnnLayer {
             .collect()
     }
 
-    fn backprop_self(
-        &mut self,
-        output_derivatives: &[Self::OutputElem],
-        inputs: &[Self::InputElem],
-        eta: f64,
-    ) {
-        // todo!()
+    fn backprop_self(&mut self, output_derivatives: &[Image], inputs: &[Image], eta: f64) {
+        // for (kernel, dl_dout) in self.kernels.iter_mut().zip(output_derivatives.iter()) {
+        //     for (x, y) in cartesian_product(0..self.kernel_diameter, 0..self.kernel_diameter) {
+        //         let mut dl_dfilterxy = 0.;
+        //         for (i, j) in cartesian_product(0..dl_dout.xsize, 0..dl_dout.ysize) {
+        //             let dl_doutij = dl_dout[(i, j)];
+        //             let doutij_dfilterxy = inputs[0][(x + i, y + j)];
+        //             dl_dfilterxy += dl_doutij * doutij_dfilterxy;
+        //         }
+
+        //         kernel[y * self.kernel_diameter + x] -= dl_dfilterxy * eta;
+        //     }
+        // }
     }
 
     fn backprop_input(
@@ -148,6 +175,7 @@ pub fn apply_kernel(kernel: &[f64], diameter: usize, stride: usize, input: &Imag
     )
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SoftmaxLayer;
 
 impl NeuralNetwork for SoftmaxLayer {
@@ -157,15 +185,6 @@ impl NeuralNetwork for SoftmaxLayer {
     fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
         let sum: f64 = input.iter().map(|&x| x.exp()).sum();
         input.iter().map(|&x| x.exp() / sum).collect()
-    }
-
-    fn backprop_self(
-        &mut self,
-        _output_derivatives: &[Self::OutputElem],
-        _inputs: &[Self::InputElem],
-        _eta: f64,
-    ) {
-        // do nothing.
     }
 
     fn backprop_input(
@@ -195,8 +214,21 @@ impl NeuralNetwork for SoftmaxLayer {
     }
 }
 
+pub fn softmax_loss_gradient(outputs: &[f64], correct_output: usize) -> Vec<f64> {
+    let mut result: Vec<_> = repeat(0.).take(outputs.len()).collect();
+    result[correct_output] = -1. / outputs[correct_output];
+    result
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MaxpoolLayer {
     diameter: usize,
+}
+
+impl MaxpoolLayer {
+    pub fn new(diameter: usize) -> Self {
+        Self { diameter }
+    }
 }
 
 impl NeuralNetwork for MaxpoolLayer {
@@ -225,15 +257,6 @@ impl NeuralNetwork for MaxpoolLayer {
             .collect()
     }
 
-    fn backprop_self(
-        &mut self,
-        _output_derivatives: &[Self::OutputElem],
-        _inputs: &[Self::InputElem],
-        _eta: f64,
-    ) {
-        // do nothing.
-    }
-
     fn backprop_input(
         &self,
         output_derivatives: &[Self::OutputElem],
@@ -248,12 +271,14 @@ impl NeuralNetwork for MaxpoolLayer {
                     for ty in 0..output_derivative.ysize {
                         let sx = tx * self.diameter;
                         let sy = ty * self.diameter;
-                        let max_coord = (sx..sx + self.diameter)
-                            .flat_map(|x| repeat(x).zip(sy..sy + self.diameter))
-                            .max_by(|&(ax, ay), &(bx, by)| {
-                                f64::total_cmp(&input[(ax, ay)], &input[(bx, by)])
-                            })
-                            .expect("maxpool diameter can't be empty");
+                        // let max_coord = (sx..sx + self.diameter)
+                        //     .flat_map(|x| repeat(x).zip(sy..sy + self.diameter))
+                        let max_coord =
+                            cartesian_product(sx..sx + self.diameter, sy..sy + self.diameter)
+                                .max_by(|&(ax, ay), &(bx, by)| {
+                                    f64::total_cmp(&input[(ax, ay)], &input[(bx, by)])
+                                })
+                                .expect("maxpool diameter can't be empty");
                         input_derivative[max_coord] = output_derivative[(tx, ty)];
                     }
                 }
@@ -263,13 +288,53 @@ impl NeuralNetwork for MaxpoolLayer {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FlattenLayer;
+
+impl NeuralNetwork for FlattenLayer {
+    type InputElem = Image;
+
+    type OutputElem = f64;
+
+    fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
+        input
+            .iter()
+            .flat_map(|image| image.data.iter())
+            .cloned()
+            .collect()
+    }
+
+    fn backprop_input(
+        &self,
+        output_derivatives: &[Self::OutputElem],
+        inputs: &[Self::InputElem],
+    ) -> Vec<Self::InputElem> {
+        let n_imgs = inputs.len();
+        let xsize = inputs[0].xsize;
+        let ysize = inputs[0].ysize;
+
+        let mut imgs: Vec<_> = repeat_with(|| Image::black(xsize, ysize))
+            .take(n_imgs)
+            .collect();
+
+        imgs.iter_mut()
+            .flat_map(|img| img.data.iter_mut())
+            .zip(output_derivatives.iter())
+            .for_each(|(input_derivative, &output_derivative)| {
+                *input_derivative = output_derivative;
+            });
+
+        imgs
+    }
+}
+
 /// An activation function.
 pub trait Activation {
     fn apply(&self, input: f64) -> f64;
     fn derivative(&self, input: f64) -> f64;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Linear;
 impl Activation for Linear {
     fn apply(&self, input: f64) -> f64 {
@@ -281,7 +346,7 @@ impl Activation for Linear {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Relu;
 impl Activation for Relu {
     fn apply(&self, input: f64) -> f64 {
@@ -293,7 +358,7 @@ impl Activation for Relu {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LeakyRelu(pub f64);
 impl Activation for LeakyRelu {
     fn apply(&self, input: f64) -> f64 {
@@ -313,7 +378,7 @@ impl Activation for LeakyRelu {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Logistic;
 impl Activation for Logistic {
     fn apply(&self, input: f64) -> f64 {
@@ -326,7 +391,7 @@ impl Activation for Logistic {
 }
 
 /// A standard neural network layer.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FullyConnectedLayer<F: Activation> {
     n_inputs: usize,
     n_outputs: usize,
@@ -441,4 +506,13 @@ impl<F: Activation> FullyConnectedLayer<F> {
             .map(|(in_idx, in_value)| self[(output_number, in_idx)] * in_value)
             .sum()
     }
+}
+
+fn cartesian_product<T, U>(left: T, right: U) -> impl Iterator<Item = (T::Item, U::Item)>
+where
+    T: Iterator,
+    U: Iterator + Clone + 'static,
+    T::Item: Clone,
+{
+    left.flat_map(move |l| repeat(l).zip(right.clone()))
 }
