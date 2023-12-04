@@ -1,7 +1,7 @@
 //! Convolutional neural network implementation.
 
 use std::{
-    iter::{once, repeat_with},
+    iter::{once, repeat, repeat_with},
     ops::{Index, IndexMut},
 };
 
@@ -115,9 +115,7 @@ impl NeuralNetwork for CnnLayer {
         inputs: &[Self::InputElem],
         eta: f64,
     ) {
-        // Well, first I guess let's split up the outputs into the
-        // kernels that they came from.
-        todo!()
+        // todo!()
     }
 
     fn backprop_input(
@@ -125,7 +123,11 @@ impl NeuralNetwork for CnnLayer {
         output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem> {
-        todo!()
+        // todo!()
+        inputs
+            .iter()
+            .map(|_| Image::black(inputs[0].xsize, inputs[0].ysize))
+            .collect()
     }
 }
 
@@ -193,10 +195,90 @@ impl NeuralNetwork for SoftmaxLayer {
     }
 }
 
+pub struct MaxpoolLayer {
+    diameter: usize,
+}
+
+impl NeuralNetwork for MaxpoolLayer {
+    type InputElem = Image;
+
+    type OutputElem = Image;
+
+    fn propagate(&self, input: &[Self::InputElem]) -> Vec<Self::OutputElem> {
+        input
+            .iter()
+            .map(|image| {
+                Image::from_sampler(
+                    image.xsize / self.diameter,
+                    image.ysize / self.diameter,
+                    |tx, ty| {
+                        let sx = tx * self.diameter;
+                        let sy = ty * self.diameter;
+                        (sx..sx + self.diameter)
+                            .flat_map(|x| repeat(x).zip(sy..sy + self.diameter))
+                            .map(|(x, y)| image[(x, y)])
+                            .max_by(f64::total_cmp)
+                            .expect("maxpool diameter can't be empty")
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn backprop_self(
+        &mut self,
+        _output_derivatives: &[Self::OutputElem],
+        _inputs: &[Self::InputElem],
+        _eta: f64,
+    ) {
+        // do nothing.
+    }
+
+    fn backprop_input(
+        &self,
+        output_derivatives: &[Self::OutputElem],
+        inputs: &[Self::InputElem],
+    ) -> Vec<Self::InputElem> {
+        output_derivatives
+            .iter()
+            .zip(inputs.iter())
+            .map(|(output_derivative, input)| {
+                let mut input_derivative = Image::black(input.xsize, input.ysize);
+                for tx in 0..output_derivative.xsize {
+                    for ty in 0..output_derivative.ysize {
+                        let sx = tx * self.diameter;
+                        let sy = ty * self.diameter;
+                        let max_coord = (sx..sx + self.diameter)
+                            .flat_map(|x| repeat(x).zip(sy..sy + self.diameter))
+                            .max_by(|&(ax, ay), &(bx, by)| {
+                                f64::total_cmp(&input[(ax, ay)], &input[(bx, by)])
+                            })
+                            .expect("maxpool diameter can't be empty");
+                        input_derivative[max_coord] = output_derivative[(tx, ty)];
+                    }
+                }
+                input_derivative
+            })
+            .collect()
+    }
+}
+
 /// An activation function.
 pub trait Activation {
     fn apply(&self, input: f64) -> f64;
     fn derivative(&self, input: f64) -> f64;
+}
+
+#[derive(Debug)]
+pub struct Linear;
+impl Activation for Linear {
+    fn apply(&self, input: f64) -> f64 {
+        input
+    }
+
+    fn derivative(&self, _: f64) -> f64 {
+        1.
+    }
 }
 
 #[derive(Debug)]
