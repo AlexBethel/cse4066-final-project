@@ -1,16 +1,20 @@
 use std::{f64::consts::TAU, fs::File};
 
-use cnn::{CnnLayer, MaxpoolLayer, NeuralNetwork};
+use crate::random::random;
 use image::Image;
+use layers::{
+    cnn::CnnLayer,
+    flatten::FlattenLayer,
+    fully_connected::{FullyConnectedLayer, Linear},
+    maxpool::MaxpoolLayer,
+    softmax::{softmax_loss_gradient, SoftmaxLayer},
+};
+use network::{NeuralNetwork, StackedNetwork};
 use unit::NonTrainingLayer;
 
-use crate::{
-    cnn::{softmax_loss_gradient, FlattenLayer, FullyConnectedLayer, Linear, SoftmaxLayer},
-    random::random,
-};
-
-mod cnn;
 mod image;
+mod layers;
+mod network;
 mod polygon;
 mod random;
 mod unit;
@@ -28,12 +32,9 @@ fn main() {
     // unittest_network();
 }
 
-type NetworkType = cnn::StackedNetwork<
-    cnn::StackedNetwork<
-        cnn::StackedNetwork<
-            cnn::StackedNetwork<NonTrainingLayer<CnnLayer>, MaxpoolLayer>,
-            FlattenLayer,
-        >,
+type NetworkType = StackedNetwork<
+    StackedNetwork<
+        StackedNetwork<StackedNetwork<NonTrainingLayer<CnnLayer>, MaxpoolLayer>, FlattenLayer>,
         FullyConnectedLayer<Linear>,
     >,
     SoftmaxLayer,
@@ -76,12 +77,7 @@ fn generate_network() {
 
     for _ in 0..10000 {
         let n_sides = random::<u32>() % (MAX_SIDES as u32 - 2) + 3;
-        // let n_sides = 7;
         let image = polygon::ngon_regular(100, 100, n_sides, random::<f64>() * TAU);
-        // let image = polygon::ngon_regular(100, 100, n_sides, 0.3);
-        // image
-        //     .write_png(&mut File::create(format!("img_{:05}.png", i)).unwrap())
-        //     .unwrap();
         let inputs = [image];
 
         let output = network.propagate(&inputs);

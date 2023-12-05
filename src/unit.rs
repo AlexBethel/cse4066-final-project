@@ -2,7 +2,7 @@
 
 use serde::{Serialize, Deserialize};
 
-use crate::cnn::NeuralNetwork;
+use crate::network::NeuralNetwork;
 
 /// A neural network layer that behaves normally, but never trains.
 #[derive(Debug, Serialize, Deserialize)]
