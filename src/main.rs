@@ -31,8 +31,6 @@ fn main() {
 
     test_network(load_network());
 
-    // unittest_network();
-
     // train_mnist();
     test_mnist(load_mnist_network());
 
