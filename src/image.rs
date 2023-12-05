@@ -6,6 +6,7 @@ use std::{
 };
 
 /// A grayscale, 8-bit depth image.
+#[derive(Debug)]
 pub struct Image {
     pub xsize: usize,
     pub ysize: usize,

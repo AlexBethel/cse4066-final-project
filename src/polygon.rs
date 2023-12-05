@@ -35,7 +35,7 @@ pub fn ngon_regular(xsize: usize, ysize: usize, n_vertices: u32, angle_offset: f
             (sc.1, sc.0)
         })
         .collect();
-    ngon_flat(xsize, ysize, &vertices)
+    ngon_flat(xsize * 2, ysize * 2, &vertices).divide(2, 2)
 }
 
 /// An iterator around the edges of a polygon.

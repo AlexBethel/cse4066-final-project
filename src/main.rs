@@ -2,6 +2,7 @@ use std::{f64::consts::TAU, fs::File};
 
 use cnn::{CnnLayer, MaxpoolLayer, NeuralNetwork};
 use image::Image;
+use unit::NonTrainingLayer;
 
 use crate::{
     cnn::{softmax_loss_gradient, FlattenLayer, FullyConnectedLayer, Linear, SoftmaxLayer},
@@ -12,28 +13,62 @@ mod cnn;
 mod image;
 mod polygon;
 mod random;
+mod unit;
 
-const MAX_SIDES: usize = 12;
+const MAX_SIDES: usize = 8;
 
 fn main() {
-    generate_network();
+    // generate_network();
 
     dump_testing_data();
 
     // 82 is the threshold
     test_network(load_network());
+
+    // unittest_network();
 }
 
 type NetworkType = cnn::StackedNetwork<
     cnn::StackedNetwork<
-        cnn::StackedNetwork<cnn::StackedNetwork<CnnLayer, MaxpoolLayer>, FlattenLayer>,
+        cnn::StackedNetwork<
+            cnn::StackedNetwork<NonTrainingLayer<CnnLayer>, MaxpoolLayer>,
+            FlattenLayer,
+        >,
         FullyConnectedLayer<Linear>,
     >,
     SoftmaxLayer,
 >;
 
+fn unittest_network() {
+    let mut network = CnnLayer::new(3, 1, 8)
+        .stack(MaxpoolLayer::new(8))
+        .stack(FlattenLayer)
+        .stack(NonTrainingLayer(FullyConnectedLayer::new(
+            1152,
+            MAX_SIDES + 1,
+            Linear,
+        )))
+        .stack(SoftmaxLayer);
+
+    let n_sides = 7;
+    let image = polygon::ngon_regular(100, 100, n_sides, 0.3 * TAU);
+    image
+        .write_png(&mut File::create("unit.png").unwrap())
+        .unwrap();
+
+    let inputs = [image];
+    let output = network.propagate(&inputs);
+    let loss = -output[n_sides as usize].ln();
+    let output_derivatives = softmax_loss_gradient(&output, n_sides as _);
+    network.backprop_self(&output_derivatives, &inputs, 0.01);
+
+    let new_output = network.propagate(&inputs);
+    let new_loss = -new_output[n_sides as usize].ln();
+    println!("delta loss = {}", new_loss - loss);
+}
+
 fn generate_network() {
-    let mut network: NetworkType = CnnLayer::new(3, 1, 8)
+    let mut network: NetworkType = NonTrainingLayer(CnnLayer::new(3, 1, 8))
         .stack(MaxpoolLayer::new(8))
         .stack(FlattenLayer)
         .stack(FullyConnectedLayer::new(1152, MAX_SIDES + 1, Linear))
@@ -41,7 +76,9 @@ fn generate_network() {
 
     for _ in 0..10000 {
         let n_sides = random::<u32>() % (MAX_SIDES as u32 - 2) + 3;
+        // let n_sides = 7;
         let image = polygon::ngon_regular(100, 100, n_sides, random::<f64>() * TAU);
+        // let image = polygon::ngon_regular(100, 100, n_sides, 0.3);
         // image
         //     .write_png(&mut File::create(format!("img_{:05}.png", i)).unwrap())
         //     .unwrap();
@@ -52,6 +89,7 @@ fn generate_network() {
         println!("{:?}", (n_sides, loss, &output));
 
         let output_derivatives = softmax_loss_gradient(&output, n_sides.try_into().unwrap());
+        dbg!(&output_derivatives);
         network.backprop_self(&output_derivatives, &inputs, 0.01);
     }
 

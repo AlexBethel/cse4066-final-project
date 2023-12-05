@@ -131,26 +131,41 @@ impl NeuralNetwork for CnnLayer {
     }
 
     fn backprop_self(&mut self, output_derivatives: &[Image], inputs: &[Image], eta: f64) {
-        // for (kernel, dl_dout) in self.kernels.iter_mut().zip(output_derivatives.iter()) {
-        //     for (x, y) in cartesian_product(0..self.kernel_diameter, 0..self.kernel_diameter) {
-        //         let mut dl_dfilterxy = 0.;
-        //         for (i, j) in cartesian_product(0..dl_dout.xsize, 0..dl_dout.ysize) {
-        //             let dl_doutij = dl_dout[(i, j)];
-        //             let doutij_dfilterxy = inputs[0][(x + i, y + j)];
-        //             dl_dfilterxy += dl_doutij * doutij_dfilterxy;
-        //         }
+        for (_index, (kernel, dl_dout)) in self
+            .kernels
+            .iter_mut()
+            .zip(output_derivatives.iter())
+            .enumerate()
+        {
+            for (x, y) in cartesian_product(0..self.kernel_diameter, 0..self.kernel_diameter) {
+                // if index == 3 && x == 1 && y == 0 {
+                    let mut dl_dfilterxy = 0.;
+                    for (i, j) in cartesian_product(0..dl_dout.xsize, 0..dl_dout.ysize) {
+                        let dl_doutij = dl_dout[(i, j)];
+                        let doutij_dfilterxy = inputs[0][(x + i, y + j)];
+                        dl_dfilterxy += dl_doutij * doutij_dfilterxy;
+                    }
 
-        //         kernel[y * self.kernel_diameter + x] -= dl_dfilterxy * eta;
-        //     }
-        // }
+                    // println!("Analytic dl_dfilterxy = {dl_dfilterxy}");
+                    // println!("adjusting by {}", -dl_dfilterxy * eta);
+                    // println!(
+                    //     "expecting delta loss {}",
+                    //     -dl_dfilterxy * eta * dl_dfilterxy
+                    // );
+                    kernel[y * self.kernel_diameter + x] -= dl_dfilterxy * eta;
+                // }
+            }
+        }
     }
 
     fn backprop_input(
         &self,
-        output_derivatives: &[Self::OutputElem],
+        _output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem> {
-        // todo!()
+        println!("cnn backprop");
+
+        // unimplemented
         inputs
             .iter()
             .map(|_| Image::black(inputs[0].xsize, inputs[0].ysize))
@@ -192,31 +207,59 @@ impl NeuralNetwork for SoftmaxLayer {
         output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem> {
+        println!("softmax backprop");
+
         // Index of the single correct output choice.
         let (c, derr_dout_c) = output_derivatives
             .iter()
             .enumerate()
             .find(|(_, &v)| v != 0.)
             .expect("network was already perfect!");
-        let t_c = inputs[c];
+        let t_c = not_nan(inputs[c]);
+        println!("got t_c");
 
-        let s: f64 = inputs.iter().map(|&t| t.exp()).sum();
+        let s: f64 = not_nan(inputs.iter().map(|&t| not_nan(t.exp())).sum());
+        println!("got s = {s}");
         let dout_c_din_i = inputs.iter().enumerate().map(|(i, &t)| {
-            if i != c {
-                -(t_c.exp() * t.exp()) / s.powi(2)
+            // dbg!(i);
+            // if i == 4 {
+            //     dbg!(t);
+            //     dbg!(t_c);
+            //     dbg!(s);
+            // }
+            let x = not_nan(if i != c {
+                // -(t_c.exp() * t.exp()) / s.powi(2)
+                -(t_c + t - 2. * s.ln()).exp()
             } else {
-                t_c.exp() * (s - t_c.exp()) / s.powi(2)
-            }
+                println!("snd");
+                // dbg!(t_c.exp());
+                // dbg!(s - t_c.exp());
+                // dbg!(t_c.exp() * (s - t_c.exp()));
+                // dbg!(s.powi(2));
+                println!("{}", (t_c + (s - t_c.exp()).ln() - 2. * s.ln()).exp());
+                // if (t_c.exp() * (s - t_c.exp()) / s.powi(2)).is_nan() {
+                //     panic!();
+                // }
+                (t_c + (s - t_c.exp()).ln() - 2. * s.ln()).exp()
+                // t_c.exp() * (s - t_c.exp()) / s.powi(2)
+            });
+            dbg!(x);
+            x
         });
+        println!("made dout_c_din_i");
 
-        let derr_din_i = dout_c_din_i.map(|x| x * derr_dout_c);
-        derr_din_i.collect()
+        dbg!(derr_dout_c);
+        let derr_din_i = dout_c_din_i.map(|x| not_nan(x * derr_dout_c));
+        println!("made derr_din_i");
+        let res = derr_din_i.collect();
+        println!("collected");
+        res
     }
 }
 
 pub fn softmax_loss_gradient(outputs: &[f64], correct_output: usize) -> Vec<f64> {
-    let mut result: Vec<_> = repeat(0.).take(outputs.len()).collect();
-    result[correct_output] = -1. / outputs[correct_output];
+    let mut result = vec![0.; outputs.len()];
+    result[correct_output] = -(1. / outputs[correct_output]).min(1e10);
     result
 }
 
@@ -466,7 +509,7 @@ impl<F: Activation> NeuralNetwork for FullyConnectedLayer<F> {
             for (input_number, input) in (inputs.iter().cloned().chain(once(1.0))).enumerate() {
                 let doutput_dweight = a_prime * input;
                 let derror_dweight = derror_doutput * doutput_dweight;
-                self[(output_number, input_number)] -= eta * derror_dweight;
+                self[(output_number, input_number)] -= not_nan(eta * derror_dweight);
             }
         }
     }
@@ -476,20 +519,23 @@ impl<F: Activation> NeuralNetwork for FullyConnectedLayer<F> {
         output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem> {
+        println!("fully connected backprop");
         (0..self.n_inputs)
             .map(|input_idx| {
-                output_derivatives
-                    .iter()
-                    .enumerate()
-                    .map(|(output_idx, derror_doutput)| {
-                        let sum = self.output_neuron_summation(output_idx, inputs);
-                        let doutput_dsum = self.activation.derivative(sum);
-                        let dsum_dinput = self[(output_idx, input_idx)];
-                        let doutput_dinput = doutput_dsum * dsum_dinput;
-                        let derror_dinput = derror_doutput * doutput_dinput;
-                        derror_dinput
-                    })
-                    .sum()
+                not_nan(
+                    output_derivatives
+                        .iter()
+                        .enumerate()
+                        .map(|(output_idx, derror_doutput)| {
+                            let sum = self.output_neuron_summation(output_idx, inputs);
+                            let doutput_dsum = self.activation.derivative(sum);
+                            let dsum_dinput = self[(output_idx, input_idx)];
+                            let doutput_dinput = doutput_dsum * dsum_dinput;
+                            let derror_dinput = derror_doutput * doutput_dinput;
+                            derror_dinput
+                        })
+                        .sum(),
+                )
             })
             .collect()
     }
@@ -515,4 +561,12 @@ where
     T::Item: Clone,
 {
     left.flat_map(move |l| repeat(l).zip(right.clone()))
+}
+
+fn not_nan(x: f64) -> f64 {
+    if x.is_nan() {
+        panic!()
+    } else {
+        x
+    }
 }
