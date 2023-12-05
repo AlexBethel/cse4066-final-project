@@ -101,7 +101,7 @@ pub fn apply_kernel(kernel: &[f64], diameter: usize, stride: usize, input: &Imag
             let mut sum = 0.;
             for ky in 0..diameter {
                 for kx in 0..diameter {
-                    sum += kernel[ky * diameter + kx] * input[(ul_pixel.0 + kx, ul_pixel.1 + ky)];
+                    sum += kernel[ky * diameter + kx] * (input[(ul_pixel.0 + kx, ul_pixel.1 + ky)] - 0.5);
                 }
             }
             sum
