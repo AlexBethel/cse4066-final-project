@@ -55,34 +55,6 @@ type MNistNetworkType = StackedNetwork<
     SoftmaxLayer,
 >;
 
-fn unittest_network() {
-    let mut network = CnnLayer::new(3, 1, 8)
-        .stack(MaxpoolLayer::new(8))
-        .stack(FlattenLayer)
-        .stack(NonTrainingLayer(FullyConnectedLayer::new(
-            1152,
-            MAX_SIDES + 1,
-            Linear,
-        )))
-        .stack(SoftmaxLayer);
-
-    let n_sides = 7;
-    let image = polygon::ngon_regular(100, 100, n_sides, 0.3 * TAU);
-    image
-        .write_png(&mut File::create("unit.png").unwrap())
-        .unwrap();
-
-    let inputs = [image];
-    let output = network.propagate(&inputs);
-    let loss = -output[n_sides as usize].ln();
-    let output_derivatives = softmax_loss_gradient(&output, n_sides as _);
-    network.backprop_self(&output_derivatives, &inputs, 0.01);
-
-    let new_output = network.propagate(&inputs);
-    let new_loss = -new_output[n_sides as usize].ln();
-    println!("delta loss = {}", new_loss - loss);
-}
-
 fn generate_network() {
     let mut network: NetworkType = NonTrainingLayer(CnnLayer::new(3, 1, 8))
         .stack(MaxpoolLayer::new(8))
