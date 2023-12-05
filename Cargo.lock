@@ -117,6 +117,7 @@ name = "project"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "flate2",
  "png",
  "rand",
  "serde",

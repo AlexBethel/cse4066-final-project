@@ -1,4 +1,4 @@
-use std::{f64::consts::TAU, fs::File};
+use std::{f64::consts::TAU, fs::File, path::Path};
 
 use crate::random::random;
 use image::Image;
@@ -9,11 +9,13 @@ use layers::{
     maxpool::MaxpoolLayer,
     softmax::{softmax_loss_gradient, SoftmaxLayer},
 };
+use mnist::read_mnist;
 use network::{NeuralNetwork, StackedNetwork};
 use unit::NonTrainingLayer;
 
 mod image;
 mod layers;
+mod mnist;
 mod network;
 mod polygon;
 mod random;
@@ -22,14 +24,17 @@ mod unit;
 const MAX_SIDES: usize = 8;
 
 fn main() {
-    // generate_network();
+    // // generate_network();
 
-    dump_testing_data();
+    // dump_testing_data();
 
-    // 82 is the threshold
-    test_network(load_network());
+    // // 82 is the threshold
+    // test_network(load_network());
 
-    // unittest_network();
+    // // unittest_network();
+
+    // train_mnist();
+    test_mnist(load_mnist_network());
 }
 
 type NetworkType = StackedNetwork<
@@ -90,6 +95,85 @@ fn generate_network() {
     }
 
     bincode::serialize_into(File::create("network.dat").unwrap(), &network).unwrap();
+}
+
+fn train_mnist() {
+    let mut network = NonTrainingLayer(CnnLayer::new(4, 1, 8))
+        .stack(MaxpoolLayer::new(4))
+        .stack(FlattenLayer)
+        .stack(FullyConnectedLayer::new(288, 10, Linear))
+        .stack(SoftmaxLayer);
+    let mnist = read_mnist(
+        &Path::new("mnist/train-images-idx3-ubyte.gz"),
+        &Path::new("mnist/train-labels-idx1-ubyte.gz"),
+    );
+
+    for (idx, item) in mnist.iter().enumerate() {
+        let inputs = [item.into()];
+
+        let output = network.propagate(&inputs);
+        let loss = -output[item.category as usize].ln();
+        if idx % 100 == 0 {
+            println!("{idx}: {:?}", (item.category, loss, &output));
+        }
+
+        let output_derivatives = softmax_loss_gradient(&output, item.category.try_into().unwrap());
+        network.backprop_self(&output_derivatives, &inputs, 0.01);
+    }
+
+    bincode::serialize_into(File::create("mnist_network.dat").unwrap(), &network).unwrap();
+}
+
+fn test_mnist(network: NetworkType) {
+    let mnist = read_mnist(
+        &Path::new("mnist/t10k-images-idx3-ubyte.gz"),
+        &Path::new("mnist/t10k-labels-idx1-ubyte.gz"),
+    );
+
+    let mut right = 0;
+    let mut wrong = 0;
+    for (idx, item) in mnist.iter().enumerate() {
+        let image: Image = item.into();
+        image
+            .write_png(&mut File::create(format!("mnist_test/{idx:04}.png")).unwrap())
+            .unwrap();
+        let inputs = [image];
+
+        let output = network.propagate(&inputs);
+        let loss = -output[item.category as usize].ln();
+
+        let ident = output
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap()
+            .0;
+        if ident == item.category as usize {
+            right += 1;
+        } else {
+            wrong += 1;
+        }
+        println!(
+            "{}: {} -> {}{}",
+            idx,
+            loss,
+            ident,
+            if ident != item.category as usize {
+                " WRONG"
+            } else {
+                ""
+            }
+        );
+    }
+
+    println!("Accuracy {}%", 100 * right / (right + wrong));
+}
+
+fn load_mnist_network() -> NetworkType {
+    bincode::deserialize_from(
+        File::open("mnist_network.dat").expect("Can't open mnist_network.dat"),
+    )
+    .expect("Malformed network")
 }
 
 fn load_network() -> NetworkType {

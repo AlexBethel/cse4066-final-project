@@ -155,7 +155,6 @@ impl<F: Activation> NeuralNetwork for FullyConnectedLayer<F> {
         output_derivatives: &[Self::OutputElem],
         inputs: &[Self::InputElem],
     ) -> Vec<Self::InputElem> {
-        println!("fully connected backprop");
         (0..self.n_inputs)
             .map(|input_idx| {
                 output_derivatives
